@@ -744,6 +744,222 @@ def main():
             total_animals = sum([len(c.get('animals', [])) for c in st.session_state.configurations.values()])
             st.metric("🦁 Zvířata", total_animals)
 
+def create_interactive_svg_html(svg_content, svg_elements):
+    """Vytvoří interaktivní HTML s SVG, které umožňuje klikání na elementy"""
+    
+    # Seznam všech ID elementů pro JavaScript
+    element_ids = [elem['id'] for elem in svg_elements]
+    element_ids_js = json.dumps(element_ids)
+    
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <style>
+            body {{
+                margin: 0;
+                padding: 10px;
+                font-family: Arial, sans-serif;
+                background: #f8f9fa;
+            }}
+            
+            .svg-container {{
+                border: 2px solid #ddd;
+                border-radius: 10px;
+                padding: 10px;
+                background: white;
+                overflow: auto;
+                max-height: 480px;
+            }}
+            
+            .clickable-element {{
+                cursor: pointer !important;
+                transition: all 0.3s ease;
+            }}
+            
+            .clickable-element:hover {{
+                stroke: #ff6b35 !important;
+                stroke-width: 4 !important;
+                opacity: 0.8 !important;
+            }}
+            
+            .selected-element {{
+                stroke: #ff6b35 !important;
+                stroke-width: 4 !important;
+                fill: #ffeb3b !important;
+                opacity: 0.7 !important;
+            }}
+            
+            .info-panel {{
+                position: fixed;
+                top: 10px;
+                right: 10px;
+                background: white;
+                border: 2px solid #333;
+                border-radius: 10px;
+                padding: 15px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+                z-index: 1000;
+                max-width: 250px;
+                font-size: 14px;
+            }}
+            
+            .close-btn {{
+                background: #ff4444;
+                color: white;
+                border: none;
+                border-radius: 5px;
+                padding: 5px 10px;
+                cursor: pointer;
+                float: right;
+            }}
+            
+            .select-btn {{
+                background: #3498db;
+                color: white;
+                border: none;
+                border-radius: 5px;
+                padding: 8px 15px;
+                cursor: pointer;
+                margin-top: 10px;
+                width: 100%;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="svg-container">
+            {svg_content}
+        </div>
+        
+        <script>
+            let selectedElement = null;
+            const elementIds = {element_ids_js};
+            
+            // Přidat event listenery ke všem elementům
+            document.addEventListener('DOMContentLoaded', function() {{
+                elementIds.forEach(function(id) {{
+                    const element = document.getElementById(id);
+                    if (element) {{
+                        element.classList.add('clickable-element');
+                        element.addEventListener('click', function(e) {{
+                            e.stopPropagation();
+                            selectElement(id, element);
+                        }});
+                    }}
+                }});
+                
+                // Kliknutí mimo elementy zruší výběr
+                document.addEventListener('click', function(e) {{
+                    if (!e.target.closest('.clickable-element') && !e.target.closest('.info-panel')) {{
+                        clearSelection();
+                    }}
+                }});
+            }});
+            
+            function selectElement(elementId, element) {{
+                // Zrušit předchozí výběr
+                clearSelection();
+                
+                // Označit nový element
+                selectedElement = element;
+                element.classList.add('selected-element');
+                
+                // Zobrazit info panel
+                showInfoPanel(elementId);
+                
+                // Poslat info do Streamlit (simulace)
+                console.log('Selected element:', elementId);
+            }}
+            
+            function clearSelection() {{
+                if (selectedElement) {{
+                    selectedElement.classList.remove('selected-element');
+                    selectedElement = null;
+                }}
+                hideInfoPanel();
+            }}
+            
+            function showInfoPanel(elementId) {{
+                // Odstranit existující panel
+                hideInfoPanel();
+                
+                // Vytvořit nový panel
+                const panel = document.createElement('div');
+                panel.className = 'info-panel';
+                panel.id = 'info-panel';
+                
+                panel.innerHTML = `
+                    <button class="close-btn" onclick="clearSelection()">×</button>
+                    <h4>📍 Element vybrán</h4>
+                    <p><strong>ID:</strong> ${{elementId}}</p>
+                    <p><strong>Typ:</strong> ${{getElementType(elementId)}}</p>
+                    <button class="select-btn" onclick="selectForConfiguration('${{elementId}}')">
+                        🎯 Konfigurovat element
+                    </button>
+                `;
+                
+                document.body.appendChild(panel);
+            }}
+            
+            function hideInfoPanel() {{
+                const panel = document.getElementById('info-panel');
+                if (panel) {{
+                    panel.remove();
+                }}
+            }}
+            
+            function getElementType(elementId) {{
+                const element = document.getElementById(elementId);
+                if (!element) return 'Neznámý';
+                
+                const tagName = element.tagName.toLowerCase();
+                const className = element.className.baseVal || element.className || '';
+                
+                if (className.includes('enclosure')) return '🏠 Výběh';
+                if (className.includes('facility')) return '🏢 Služba';
+                if (className.includes('path')) return '🛤️ Cesta';
+                if (className.includes('water')) return '💧 Voda';
+                if (className.includes('restricted')) return '🚫 Zázemí';
+                
+                return `📐 ${{tagName}}`;
+            }}
+            
+            function selectForConfiguration(elementId) {{
+                // Zde by bylo volání do Streamlit
+                alert(`Element "${{elementId}}" vybrán pro konfiguraci!\\n\\nV reálné aplikaci by se otevřel konfigurační panel.`);
+                
+                // Simulace - poslat data do parent window
+                if (window.parent) {{
+                    window.parent.postMessage({{
+                        type: 'elementSelected',
+                        elementId: elementId
+                    }}, '*');
+                }}
+            }}
+            
+            // Zvýraznit všechny klikací elementy při načtení
+            setTimeout(function() {{
+                elementIds.forEach(function(id) {{
+                    const element = document.getElementById(id);
+                    if (element) {{
+                        // Přidat jemné zvýraznění
+                        const originalStroke = element.getAttribute('stroke') || 'none';
+                        const originalStrokeWidth = element.getAttribute('stroke-width') || '1';
+                        
+                        if (originalStroke === 'none') {{
+                            element.setAttribute('stroke', '#cccccc');
+                            element.setAttribute('stroke-width', '1');
+                        }}
+                    }}
+                }});
+            }}, 500);
+        </script>
+    </body>
+    </html>
+    """
+    
+    return html_content
+
 def get_type_icon(area_type):
     """Vrátí ikonu pro typ oblasti"""
     icons = {
