@@ -232,17 +232,61 @@ def main():
     with col1:
         st.subheader("🗺️ SVG Mapa")
         
-        # Zobrazení SVG s highlights
-        highlighted_svg = render_svg_with_highlights(
-            st.session_state.svg_content, 
-            st.session_state.configurations
-        )
+        # Zobrazení SVG s lepším renderováním
+        if st.session_state.svg_content:
+            highlighted_svg = render_svg_with_highlights(
+                st.session_state.svg_content, 
+                st.session_state.configurations
+            )
+            
+            # Alternativní způsoby zobrazení SVG
+            display_method = st.radio(
+                "Způsob zobrazení:",
+                ["HTML", "Raw SVG", "Components"],
+                horizontal=True,
+                help="Zkuste různé způsoby pokud se mapa nezobrazuje správně"
+            )
+            
+            if display_method == "HTML":
+                # Metoda 1: HTML wrapper
+                st.markdown(f"""
+                <div style="width: 100%; height: 500px; border: 2px solid #ddd; border-radius: 10px; padding: 10px; background: white; overflow: auto;">
+                    {highlighted_svg}
+                </div>
+                """, unsafe_allow_html=True)
+                
+            elif display_method == "Raw SVG":
+                # Metoda 2: Přímé zobrazení
+                st.image(highlighted_svg.encode('utf-8'), use_column_width=True)
+                
+            elif display_method == "Components":
+                # Metoda 3: Components (pokud máte streamlit-components-v1)
+                try:
+                    import streamlit.components.v1 as components
+                    components.html(f"""
+                    <div style="width: 100%; height: 500px;">
+                        {highlighted_svg}
+                    </div>
+                    """, height=500)
+                except ImportError:
+                    st.warning("Pro Components metodu nainstalujte: pip install streamlit-components-v1")
+                    st.markdown(f"""
+                    <div style="width: 100%; height: 500px; border: 2px solid #ddd; border-radius: 10px; padding: 10px; background: white; overflow: auto;">
+                        {highlighted_svg}
+                    </div>
+                    """, unsafe_allow_html=True)
+            
+            # Debug informace
+            with st.expander("🔧 Debug informace"):
+                st.text(f"SVG velikost: {len(st.session_state.svg_content)} znaků")
+                st.text(f"Počet elementů: {len(st.session_state.svg_elements)}")
+                st.text(f"Nakonfigurováno: {len(st.session_state.configurations)}")
+                
+                # Zobrazit začátek SVG
+                st.code(st.session_state.svg_content[:500] + "...", language="xml")
         
-        st.markdown(f"""
-        <div class="svg-container">
-            {highlighted_svg}
-        </div>
-        """, unsafe_allow_html=True)
+        else:
+            st.info("Nahrajte SVG soubor pro zobrazení mapy")
         
         # Seznam elementů pro výběr
         st.subheader("📋 Elementy na mapě")
