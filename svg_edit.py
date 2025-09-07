@@ -235,6 +235,31 @@ def main():
         if uploaded_file is not None:
             st.session_state.svg_content = uploaded_file.read().decode('utf-8')
             st.session_state.svg_elements = parse_svg_elements(st.session_state.svg_content)
+            
+            # Test zobrazení SVG
+            with st.expander("🔍 Test zobrazení SVG"):
+                st.markdown("**Náhled prvních 500 znaků:**")
+                preview = st.session_state.svg_content[:500]
+                st.code(preview, language="xml")
+                
+                # Rychlý test validity
+                if st.session_state.svg_content.strip().startswith('<'):
+                    st.success("✅ Soubor začíná XML/HTML tagem")
+                else:
+                    st.warning("⚠️ Soubor nezačíná XML tagem")
+                
+                if '<svg' in st.session_state.svg_content:
+                    st.success("✅ Obsahuje SVG tag")
+                else:
+                    st.error("❌ Neobsahuje SVG tag")
+                
+                # Test velikosti
+                size_mb = len(st.session_state.svg_content) / (1024 * 1024)
+                if size_mb > 5:
+                    st.warning(f"⚠️ Velký soubor: {size_mb:.1f} MB")
+                else:
+                    st.info(f"📏 Velikost: {size_mb:.2f} MB")
+            
             st.success("✅ SVG soubor načten!")
         
         # Progress bar
