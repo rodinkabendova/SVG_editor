@@ -1,4 +1,3 @@
-
 import streamlit as st
 import json
 import xml.etree.ElementTree as ET
@@ -30,6 +29,8 @@ st.markdown("""
         padding: 20px;
         background: white;
         min-height: 400px;
+        overflow: auto;
+        max-height: 600px;
     }
     
     .animal-card {
@@ -88,6 +89,29 @@ st.markdown("""
         font-weight: bold;
         transition: width 0.3s ease;
     }
+    
+    .element-button {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border: none;
+        padding: 8px 12px;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        width: 100%;
+        margin: 2px 0;
+        text-align: left;
+    }
+    
+    .element-button:hover {
+        transform: scale(1.02);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    }
+    
+    .element-button-configured {
+        background: linear-gradient(135deg, #20b2aa 0%, #008b8b 100%);
+        border: 2px solid #ff6b35;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -109,14 +133,15 @@ def parse_svg_elements(svg_content):
         
         # Najít všechny relevantní elementy
         for elem in root.iter():
-            if elem.tag.split('}')[-1] in ['g', 'path', 'polygon', 'circle', 'ellipse', 'rect']:
+            tag_name = elem.tag.split('}')[-1] if '}' in elem.tag else elem.tag
+            if tag_name in ['g', 'path', 'polygon', 'circle', 'ellipse', 'rect']:
                 element_id = elem.get('id', f"element_{len(elements)}")
                 if not elem.get('id'):
                     elem.set('id', element_id)
                 
                 elements.append({
                     'id': element_id,
-                    'tag': elem.tag.split('}')[-1],
+                    'tag': tag_name,
                     'configured': element_id in st.session_state.configurations
                 })
         
@@ -147,7 +172,7 @@ def get_animal_presets():
         '🐊': 'Krokodýl',
         '🐍': 'Had',
         '🦖': 'Dinosaurus',
-        '🐧': 'Tučňák'
+        '🐙': 'Chobotnice'
     }
 
 def render_svg_with_highlights(svg_content, configurations):
@@ -175,7 +200,11 @@ def render_svg_with_highlights(svg_content, configurations):
         if '<svg' in svg_content and '<defs>' in svg_content:
             svg_content = svg_content.replace('<defs>', f'<defs>{style_tag}')
         elif '<svg' in svg_content:
-            svg_content = svg_content.replace('<svg', f'<svg>{style_tag}<svg', 1).replace('<svg><svg', '<svg')
+            # Najít první výskyt <svg> a vložit styl za něj
+            svg_start = svg_content.find('<svg')
+            svg_end = svg_content.find('>', svg_start)
+            if svg_end != -1:
+                svg_content = svg_content[:svg_end+1] + style_tag + svg_content[svg_end+1:]
         
         # Přidat třídy k nakonfigurovaným elementům
         for element_id, config in configurations.items():
@@ -222,9 +251,63 @@ def main():
                 </div>
             </div>
             """, unsafe_allow_html=True)
+        
+        # Import/Export konfigurace
+        st.markdown("---")
+        st.header("💾 Import/Export")
+        
+        # Import konfigurace
+        config_file = st.file_uploader(
+            "Import konfigurace:",
+            type=['json'],
+            help="Nahrajte dříve uložený JSON s konfigurací"
+        )
+        
+        if config_file is not None:
+            try:
+                config_data = json.loads(config_file.read().decode('utf-8'))
+                if 'configurations' in config_data:
+                    st.session_state.configurations = config_data['configurations']
+                    # Aktualizovat označení elementů
+                    for elem in st.session_state.svg_elements:
+                        elem['configured'] = elem['id'] in st.session_state.configurations
+                    st.success("✅ Konfigurace importována!")
+                    st.rerun()
+            except Exception as e:
+                st.error(f"Chyba při importu: {e}")
     
     if st.session_state.svg_content is None:
         st.info("👆 Nahrajte SVG soubor v bočním panelu pro začátek konfigurace")
+        
+        # Ukázková sekce
+        st.markdown("---")
+        st.subheader("🎯 Co tento editor umí:")
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.markdown("""
+            **🗺️ Vizualizace SVG map**
+            - Načítání SVG souborů
+            - Interaktivní zvýraznění
+            - Vícenásobné zobrazovací režimy
+            """)
+        
+        with col2:
+            st.markdown("""
+            **⚙️ Konfigurace oblastí**
+            - Výběhy s detaily zvířat
+            - Cesty a vodní plochy
+            - Služby a budovy
+            """)
+        
+        with col3:
+            st.markdown("""
+            **📤 Export dat**
+            - Interaktivní SVG soubory
+            - JSON konfigurace
+            - Import/Export nastavení
+            """)
+        
         return
     
     # Hlavní layout
@@ -240,42 +323,30 @@ def main():
                 st.session_state.configurations
             )
             
-            # Alternativní způsoby zobrazení SVG
+            # Způsob zobrazení SVG
             display_method = st.radio(
                 "Způsob zobrazení:",
-                ["HTML", "Raw SVG", "Components"],
+                ["HTML", "Components"],
                 horizontal=True,
                 help="Zkuste různé způsoby pokud se mapa nezobrazuje správně"
             )
             
             if display_method == "HTML":
-                # Metoda 1: HTML wrapper
+                # HTML wrapper s lepším stylováním
                 st.markdown(f"""
-                <div style="width: 100%; height: 500px; border: 2px solid #ddd; border-radius: 10px; padding: 10px; background: white; overflow: auto;">
+                <div class="svg-container">
                     {highlighted_svg}
                 </div>
                 """, unsafe_allow_html=True)
                 
-            elif display_method == "Raw SVG":
-                # Metoda 2: Přímé zobrazení
-                st.image(highlighted_svg.encode('utf-8'), use_column_width=True)
-                
             elif display_method == "Components":
-                # Metoda 3: Components (pokud máte streamlit-components-v1)
-                try:
-                    import streamlit.components.v1 as components
-                    components.html(f"""
-                    <div style="width: 100%; height: 500px;">
-                        {highlighted_svg}
-                    </div>
-                    """, height=500)
-                except ImportError:
-                    st.warning("Pro Components metodu nainstalujte: pip install streamlit-components-v1")
-                    st.markdown(f"""
-                    <div style="width: 100%; height: 500px; border: 2px solid #ddd; border-radius: 10px; padding: 10px; background: white; overflow: auto;">
-                        {highlighted_svg}
-                    </div>
-                    """, unsafe_allow_html=True)
+                # Použití vestavěných Streamlit komponent
+                import streamlit.components.v1 as components
+                components.html(f"""
+                <div style="width: 100%; height: 500px; overflow: auto; border: 2px solid #ddd; border-radius: 10px; padding: 10px; background: white;">
+                    {highlighted_svg}
+                </div>
+                """, height=520)
             
             # Debug informace
             with st.expander("🔧 Debug informace"):
@@ -286,39 +357,63 @@ def main():
                 # Zobrazit začátek SVG
                 st.code(st.session_state.svg_content[:500] + "...", language="xml")
         
-        else:
-            st.info("Nahrajte SVG soubor pro zobrazení mapy")
-        
         # Seznam elementů pro výběr
         st.subheader("📋 Elementy na mapě")
         
         if st.session_state.svg_elements:
             # Filtrování
-            show_all = st.checkbox("Zobrazit všechny elementy", value=True)
+            filter_col1, filter_col2 = st.columns(2)
+            with filter_col1:
+                show_all = st.checkbox("Zobrazit všechny elementy", value=True)
+            with filter_col2:
+                search_term = st.text_input("🔍 Hledat element:", placeholder="Zadejte název...")
             
             elements_to_show = st.session_state.svg_elements
             if not show_all:
                 elements_to_show = [e for e in st.session_state.svg_elements if not e['configured']]
             
-            # Grid pro elementy
-            cols = st.columns(4)
-            for i, element in enumerate(elements_to_show):
-                with cols[i % 4]:
-                    config = st.session_state.configurations.get(element['id'], {})
-                    
-                    # Zobrazení elementu
-                    display_name = config.get('enclosureName') or config.get('facilityName') or element['id']
-                    icon = get_type_icon(config.get('areaType', ''))
-                    
-                    button_style = "animal-card-selected" if element['configured'] else "animal-card"
-                    
-                    if st.button(
-                        f"{icon} {display_name}",
-                        key=f"select_{element['id']}",
-                        help=f"Konfigurovat {element['tag']} element"
-                    ):
-                        st.session_state.selected_element = element['id']
-                        st.rerun()
+            if search_term:
+                elements_to_show = [e for e in elements_to_show if search_term.lower() in e['id'].lower()]
+            
+            # Grid pro elementy s lepším zobrazením
+            if elements_to_show:
+                st.markdown(f"**Zobrazeno {len(elements_to_show)} elementů:**")
+                
+                # Rozdělení do sloupců
+                num_cols = 3
+                cols = st.columns(num_cols)
+                
+                for i, element in enumerate(elements_to_show):
+                    with cols[i % num_cols]:
+                        config = st.session_state.configurations.get(element['id'], {})
+                        
+                        # Zobrazení elementu
+                        display_name = (config.get('enclosureName') or 
+                                      config.get('facilityName') or 
+                                      element['id'])
+                        icon = get_type_icon(config.get('areaType', ''))
+                        
+                        # Vytvoření tlačítka
+                        button_text = f"{icon} {display_name}"
+                        if len(button_text) > 25:
+                            button_text = button_text[:22] + "..."
+                        
+                        if st.button(
+                            button_text,
+                            key=f"select_{element['id']}",
+                            help=f"Konfigurovat {element['tag']} element\nID: {element['id']}",
+                            use_container_width=True
+                        ):
+                            st.session_state.selected_element = element['id']
+                            st.rerun()
+                        
+                        # Indikátor konfigurace
+                        if element['configured']:
+                            st.markdown("✅ *Nakonfigurováno*")
+                        else:
+                            st.markdown("⚙️ *Čeká na konfiguraci*")
+            else:
+                st.info("Žádné elementy nevyhovují filtru")
     
     with col2:
         st.subheader("⚙️ Konfigurace")
@@ -372,17 +467,33 @@ def main():
                 
                 # Časy krmení
                 st.markdown("### 🕐 Časy krmení")
-                feeding_times = config.get('feedingTimes', ['', '', ''])
-                if len(feeding_times) < 3:
-                    feeding_times.extend([''] * (3 - len(feeding_times)))
+                feeding_times = config.get('feedingTimes', [])
                 
-                col_f1, col_f2, col_f3 = st.columns(3)
-                with col_f1:
-                    time1 = st.time_input("Čas 1", value=None, key=f"time1_{element_id}")
-                with col_f2:
-                    time2 = st.time_input("Čas 2", value=None, key=f"time2_{element_id}")
-                with col_f3:
-                    time3 = st.time_input("Čas 3", value=None, key=f"time3_{element_id}")
+                # Dynamické přidávání časů
+                if 'temp_feeding_times' not in st.session_state:
+                    st.session_state.temp_feeding_times = feeding_times if feeding_times else ['']
+                
+                for i in range(len(st.session_state.temp_feeding_times)):
+                    col_time, col_remove = st.columns([4, 1])
+                    with col_time:
+                        time_val = st.time_input(
+                            f"Čas {i+1}:", 
+                            value=None,
+                            key=f"feeding_time_{element_id}_{i}"
+                        )
+                        if time_val:
+                            while len(st.session_state.temp_feeding_times) <= i:
+                                st.session_state.temp_feeding_times.append('')
+                            st.session_state.temp_feeding_times[i] = time_val.strftime('%H:%M')
+                    with col_remove:
+                        if len(st.session_state.temp_feeding_times) > 1:
+                            if st.button("🗑️", key=f"remove_time_{element_id}_{i}"):
+                                st.session_state.temp_feeding_times.pop(i)
+                                st.rerun()
+                
+                if st.button("➕ Přidat čas krmení"):
+                    st.session_state.temp_feeding_times.append('')
+                    st.rerun()
                 
                 # Správa zvířat
                 st.markdown("### 🦁 Zvířata ve výběhu")
@@ -403,29 +514,35 @@ def main():
                                 st.session_state.configurations[element_id] = config
                                 st.rerun()
                 
-                # Přidání nového zvířete
-                st.markdown("**Přidat zvíře:**")
-                
-                # Rychlý výběr
+                # Přidání nového zvířete - rychlý výběr
+                st.markdown("**Rychlý výběr zvířat:**")
                 animal_presets = get_animal_presets()
-                preset_cols = st.columns(5)
-                for i, (emoji, name) in enumerate(list(animal_presets.items())[:10]):
-                    with preset_cols[i % 5]:
-                        if st.button(f"{emoji}", key=f"preset_{element_id}_{i}", help=name):
-                            if 'animals' not in config:
-                                config['animals'] = []
-                            
-                            # Kontrola duplikátů
-                            if not any(a['name'] == name for a in config['animals']):
-                                config['animals'].append({
-                                    'name': name,
-                                    'emoji': emoji,
-                                    'id': len(config['animals'])
-                                })
-                                st.session_state.configurations[element_id] = config
-                                st.rerun()
+                
+                # Zobrazit presety v gridu
+                preset_items = list(animal_presets.items())
+                num_cols = 5
+                for row in range(0, len(preset_items), num_cols):
+                    cols = st.columns(num_cols)
+                    for col_idx, (emoji, name) in enumerate(preset_items[row:row+num_cols]):
+                        with cols[col_idx]:
+                            if st.button(f"{emoji}", key=f"preset_{element_id}_{row}_{col_idx}", help=name):
+                                if 'animals' not in config:
+                                    config['animals'] = []
+                                
+                                # Kontrola duplikátů
+                                if not any(a['name'] == name for a in config['animals']):
+                                    config['animals'].append({
+                                        'name': name,
+                                        'emoji': emoji,
+                                        'id': len(config['animals'])
+                                    })
+                                    st.session_state.configurations[element_id] = config
+                                    st.rerun()
+                                else:
+                                    st.error("Toto zvíře už je ve výběhu!")
                 
                 # Ruční přidání
+                st.markdown("**Ruční přidání:**")
                 col_n1, col_n2, col_n3 = st.columns([3, 1, 1])
                 with col_n1:
                     new_animal_name = st.text_input("Název zvířete:", key=f"new_name_{element_id}")
@@ -447,48 +564,6 @@ def main():
                                 st.rerun()
                             else:
                                 st.error("Toto zvíře už je ve výběhu!")
-                
-                # Hromadné přidání
-                bulk_text = st.text_area(
-                    "📝 Hromadné přidání (každé zvíře na nový řádek):",
-                    placeholder="🦜 Papoušek ara\n🦅 Orel mořský\n🦉 Sova lesní",
-                    height=100,
-                    key=f"bulk_{element_id}"
-                )
-                
-                if st.button("📝 Přidat všechna zvířata", key=f"bulk_add_{element_id}"):
-                    if bulk_text:
-                        lines = bulk_text.strip().split('\n')
-                        if 'animals' not in config:
-                            config['animals'] = []
-                        
-                        added_count = 0
-                        for line in lines:
-                            line = line.strip()
-                            if not line:
-                                continue
-                                
-                            # Extrakce emoji a názvu
-                            emoji_match = re.match(r'^([\U0001F600-\U0001F64F\U0001F300-\U0001F5FF\U0001F680-\U0001F6FF\U0001F1E0-\U0001F1FF\U00002600-\U000026FF\U00002700-\U000027BF]+)\s*(.+)', line)
-                            if emoji_match:
-                                emoji = emoji_match.group(1)
-                                name = emoji_match.group(2)
-                            else:
-                                emoji = "🐾"
-                                name = line
-                            
-                            # Kontrola duplikátů
-                            if not any(a['name'] == name for a in config['animals']):
-                                config['animals'].append({
-                                    'name': name,
-                                    'emoji': emoji,
-                                    'id': len(config['animals'])
-                                })
-                                added_count += 1
-                        
-                        st.session_state.configurations[element_id] = config
-                        st.success(f"✅ Přidáno {added_count} zvířat!")
-                        st.rerun()
             
             # Konfigurace služeb
             elif area_type == 'facility':
@@ -514,25 +589,49 @@ def main():
                     placeholder="např. Restaurace Safari"
                 )
             
+            # Konfigurace ostatních typů
+            elif area_type in ['path-pedestrian', 'path-safari', 'water', 'restricted']:
+                st.markdown(f"### {get_type_icon(area_type)} Konfigurace oblasti")
+                
+                area_name = st.text_input(
+                    "📝 Název oblasti:",
+                    value=config.get('areaName', ''),
+                    placeholder="např. Hlavní cesta, Jezero, Zázemí"
+                )
+                
+                area_description = st.text_area(
+                    "📝 Popis:",
+                    value=config.get('areaDescription', ''),
+                    height=60
+                )
+            
             # Uložení konfigurace
-            if st.button("💾 Uložit konfiguraci", type="primary"):
+            if area_type and st.button("💾 Uložit konfiguraci", type="primary"):
                 new_config = {
                     'areaType': area_type,
                     'elementId': element_id
                 }
                 
                 if 'enclosure' in area_type:
+                    # Zpracování feeding times
+                    feeding_times_clean = [t for t in st.session_state.temp_feeding_times if t]
+                    
                     new_config.update({
                         'enclosureName': enclosure_name,
                         'enclosureDescription': enclosure_description,
                         'zone': zone,
-                        'feedingTimes': [t.strftime('%H:%M') for t in [time1, time2, time3] if t is not None],
+                        'feedingTimes': feeding_times_clean,
                         'animals': config.get('animals', [])
                     })
                 elif area_type == 'facility':
                     new_config.update({
                         'facilityType': facility_type,
                         'facilityName': facility_name
+                    })
+                elif area_type in ['path-pedestrian', 'path-safari', 'water', 'restricted']:
+                    new_config.update({
+                        'areaName': area_name,
+                        'areaDescription': area_description
                     })
                 
                 st.session_state.configurations[element_id] = new_config
@@ -541,6 +640,10 @@ def main():
                 for elem in st.session_state.svg_elements:
                     if elem['id'] == element_id:
                         elem['configured'] = True
+                
+                # Vyčistit temp feeding times
+                if 'temp_feeding_times' in st.session_state:
+                    del st.session_state.temp_feeding_times
                 
                 st.success("✅ Konfigurace uložena!")
                 st.rerun()
@@ -555,11 +658,29 @@ def main():
                         if elem['id'] == element_id:
                             elem['configured'] = False
                     
+                    # Vyčistit temp feeding times
+                    if 'temp_feeding_times' in st.session_state:
+                        del st.session_state.temp_feeding_times
+                    
                     st.success("🗑️ Konfigurace smazána!")
                     st.rerun()
         
         else:
             st.info("👆 Vyberte element na mapě pro konfiguraci")
+            
+            # Přehled nakonfigurovaných elementů
+            if st.session_state.configurations:
+                st.markdown("### 📊 Nakonfigurované elementy")
+                for element_id, config in st.session_state.configurations.items():
+                    icon = get_type_icon(config.get('areaType', ''))
+                    name = (config.get('enclosureName') or 
+                           config.get('facilityName') or 
+                           config.get('areaName') or 
+                           element_id)
+                    
+                    if st.button(f"{icon} {name}", key=f"overview_{element_id}"):
+                        st.session_state.selected_element = element_id
+                        st.rerun()
     
     # Export sekce
     if st.session_state.configurations:
@@ -571,7 +692,7 @@ def main():
         with col_e1:
             if st.button("📥 Stáhnout upravenou SVG", type="primary"):
                 try:
-                    # Zde by byl kód pro export SVG s interaktivitou
+                    # Generovat interaktivní SVG
                     export_svg = generate_interactive_svg(
                         st.session_state.svg_content, 
                         st.session_state.configurations
@@ -601,6 +722,27 @@ def main():
                     file_name=f"zoo_konfigurace_{datetime.now().strftime('%Y%m%d_%H%M')}.json",
                     mime="application/json"
                 )
+        
+        # Statistiky
+        st.markdown("### 📊 Statistiky konfigurace")
+        col_s1, col_s2, col_s3, col_s4 = st.columns(4)
+        
+        with col_s1:
+            total_elements = len(st.session_state.svg_elements)
+            st.metric("📋 Celkem elementů", total_elements)
+        
+        with col_s2:
+            configured_elements = len(st.session_state.configurations)
+            st.metric("⚙️ Nakonfigurováno", configured_elements)
+        
+        with col_s3:
+            enclosures = len([c for c in st.session_state.configurations.values() 
+                            if c.get('areaType', '').startswith('enclosure')])
+            st.metric("🏠 Výběhy", enclosures)
+        
+        with col_s4:
+            total_animals = sum([len(c.get('animals', [])) for c in st.session_state.configurations.values()])
+            st.metric("🦁 Zvířata", total_animals)
 
 def get_type_icon(area_type):
     """Vrátí ikonu pro typ oblasti"""
@@ -616,61 +758,159 @@ def get_type_icon(area_type):
     return icons.get(area_type, '❓')
 
 def generate_interactive_svg(svg_content, configurations):
-    """Generuje SVG s interaktivními atributy"""
+    """Generuje SVG s interaktivními atributy a JavaScript funkcionalitou"""
     try:
         root = ET.fromstring(svg_content)
         
         # Přidat CSS styly pro interaktivitu
         style_element = ET.Element('style')
         style_element.text = """
-        .enclosure { cursor: pointer; transition: all 0.3s ease; }
+        .enclosure { 
+            cursor: pointer; 
+            transition: all 0.3s ease; 
+        }
         .enclosure:hover .enclosure-area { 
             fill: #20b2aa !important; 
             stroke: #008b8b !important; 
             stroke-width: 4 !important; 
         }
-        .enclosure:hover .animal-icon { opacity: 1 !important; }
-        .animal-icon { opacity: 0; transition: all 0.3s ease; }
+        .enclosure:hover .animal-icon { 
+            opacity: 1 !important; 
+        }
+        .animal-icon { 
+            opacity: 0; 
+            transition: all 0.3s ease; 
+        }
+        .configured-element { 
+            stroke: #27ae60 !important; 
+            stroke-width: 3 !important; 
+            opacity: 0.8;
+        }
+        .enclosure-pedestrian { fill: #90EE90 !important; }
+        .enclosure-safari { fill: #FFD700 !important; }
+        .path-pedestrian { fill: #DDA0DD !important; }
+        .path-safari { fill: #F0E68C !important; }
+        .water { fill: #87CEEB !important; }
+        .restricted { fill: #FFB6C1 !important; }
+        .facility { fill: #FFA500 !important; }
+        
+        .info-popup {
+            position: fixed;
+            background: white;
+            border: 2px solid #333;
+            border-radius: 10px;
+            padding: 15px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            z-index: 1000;
+            max-width: 300px;
+            font-family: Arial, sans-serif;
+        }
         """
         
-        # Vložit style element na začátek SVG
+        # Přidat JavaScript pro interaktivitu
+        script_element = ET.Element('script')
+        script_element.text = """
+        function selectEnclosure(elementId) {
+            // Zobrazit informace o výběhu
+            var element = document.getElementById(elementId);
+            if (!element) return;
+            
+            var enclosureName = element.getAttribute('data-enclosure') || 'Neznámý výběh';
+            var animals = element.getAttribute('data-animals') || 'Žádná zvířata';
+            var animalEmojis = element.getAttribute('data-animal-emojis') || '';
+            var feedingTimes = element.getAttribute('data-feeding-times') || 'Neurčeno';
+            var zone = element.getAttribute('data-zone') || '';
+            
+            // Vytvořit popup
+            var popup = document.createElement('div');
+            popup.className = 'info-popup';
+            popup.innerHTML = 
+                '<h3>' + animalEmojis + ' ' + enclosureName + '</h3>' +
+                '<p><strong>Oblast:</strong> ' + zone + '</p>' +
+                '<p><strong>Zvířata:</strong> ' + animals + '</p>' +
+                '<p><strong>Krmení:</strong> ' + feedingTimes + '</p>' +
+                '<button onclick="closePopup()" style="margin-top:10px; padding:5px 10px; background:#3498db; color:white; border:none; border-radius:5px; cursor:pointer;">Zavřít</button>';
+            
+            // Umístit popup
+            popup.style.left = '50px';
+            popup.style.top = '50px';
+            
+            // Odstranit předchozí popup
+            var existingPopup = document.querySelector('.info-popup');
+            if (existingPopup) {
+                existingPopup.remove();
+            }
+            
+            document.body.appendChild(popup);
+        }
+        
+        function closePopup() {
+            var popup = document.querySelector('.info-popup');
+            if (popup) {
+                popup.remove();
+            }
+        }
+        
+        // Zavřít popup při kliknutí mimo
+        document.addEventListener('click', function(e) {
+            if (!e.target.closest('.enclosure') && !e.target.closest('.info-popup')) {
+                closePopup();
+            }
+        });
+        """
+        
+        # Vložit style a script elementy na začátek SVG
         root.insert(0, style_element)
+        root.insert(1, script_element)
         
         # Přidat interaktivní atributy k nakonfigurovaným elementům
         for element_id, config in configurations.items():
             element = root.find(f".//*[@id='{element_id}']")
-            if element is not None and config.get('areaType', '').startswith('enclosure'):
+            if element is not None:
+                # Přidat základní třídy
+                area_type = config.get('areaType', '')
+                element.set('class', f'configured-element {area_type}')
                 
-                # Převést element na skupinu pokud není
-                if element.tag.split('}')[-1] != 'g':
-                    group = ET.Element('g')
-                    group.set('id', element_id + '_group')
-                    parent = element.getparent()
-                    parent.insert(list(parent).index(element), group)
-                    parent.remove(element)
-                    group.append(element)
-                    element = group
+                if area_type.startswith('enclosure'):
+                    # Převést element na skupinu pokud není
+                    tag_name = element.tag.split('}')[-1] if '}' in element.tag else element.tag
+                    if tag_name != 'g':
+                        group = ET.Element('g')
+                        group.set('id', element_id + '_group')
+                        group.set('class', f'enclosure configured-element {area_type}')
+                        parent = element.getparent()
+                        if parent is not None:
+                            parent.insert(list(parent).index(element), group)
+                            parent.remove(element)
+                            group.append(element)
+                            element = group
+                    else:
+                        element.set('class', f'enclosure configured-element {area_type}')
+                    
+                    # Přidat atributy
+                    element.set('data-enclosure', config.get('enclosureName', 'Výběh'))
+                    element.set('data-info', config.get('enclosureDescription', ''))
+                    element.set('data-zone', config.get('zone', ''))
+                    element.set('onclick', f"selectEnclosure('{element_id}')")
+                    
+                    # Přidat informace o zvířatech
+                    animals = config.get('animals', [])
+                    if animals:
+                        animal_names = ', '.join([a['name'] for a in animals])
+                        animal_emojis = ''.join([a['emoji'] for a in animals])
+                        element.set('data-animals', animal_names)
+                        element.set('data-animal-emojis', animal_emojis)
+                        element.set('data-animal-count', str(len(animals)))
+                    
+                    # Přidat časy krmení
+                    feeding_times = config.get('feedingTimes', [])
+                    if feeding_times:
+                        element.set('data-feeding-times', ', '.join(feeding_times))
                 
-                # Přidat atributy
-                element.set('class', 'enclosure')
-                element.set('data-enclosure', config.get('enclosureName', 'Výběh'))
-                element.set('data-info', config.get('enclosureDescription', ''))
-                element.set('data-zone', config.get('zone', ''))
-                element.set('onclick', f"selectEnclosure('{element_id}')")
-                
-                # Přidat informace o zvířatech
-                animals = config.get('animals', [])
-                if animals:
-                    animal_names = ', '.join([a['name'] for a in animals])
-                    animal_emojis = ''.join([a['emoji'] for a in animals])
-                    element.set('data-animals', animal_names)
-                    element.set('data-animal-emojis', animal_emojis)
-                    element.set('data-animal-count', str(len(animals)))
-                
-                # Přidat časy krmení
-                feeding_times = config.get('feedingTimes', [])
-                if feeding_times:
-                    element.set('data-feeding-times', ', '.join(feeding_times))
+                elif area_type == 'facility':
+                    element.set('data-facility-type', config.get('facilityType', ''))
+                    element.set('data-facility-name', config.get('facilityName', 'Služba'))
+                    element.set('onclick', f"alert('Služba: {config.get('facilityName', 'Neznámá služba')}')")
         
         return ET.tostring(root, encoding='unicode')
         
